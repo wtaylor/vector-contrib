@@ -3,15 +3,26 @@ use std::{collections::BTreeMap, fs, path::Path, path::PathBuf, process::Command
 use anyhow::{bail, Context, Result};
 use tempfile::{Builder, NamedTempFile};
 
-use super::config::ComposeConfig;
-use super::config::{Environment, IntegrationTestConfig};
+use super::config::{
+    Command as ComposeCommand, ComposeConfig, ComposeService, Environment, IntegrationTestConfig,
+};
 use super::runner::{
     ContainerTestRunner as _, IntegrationTestRunner, TestRunner as _, CONTAINER_TOOL, DOCKER_SOCKET,
 };
 use super::state::EnvsDir;
-use crate::app::CommandExt as _;
+use crate::app::{self, CommandExt as _};
+
+const RUNNER: &str = "runner";
 
 const NETWORK_ENV_VAR: &str = "VECTOR_NETWORK";
+
+const TEST_COMMAND: &[&str] = &[
+    "cargo",
+    "nextest",
+    "run",
+    "--no-fail-fast",
+    "--no-default-features",
+];
 
 pub struct IntegrationTest {
     integration: String,
@@ -33,7 +44,38 @@ impl IntegrationTest {
             bail!("Could not find environment named {environment:?}");
         };
         let network_name = format!("vector-integration-tests-{integration}");
-        let compose = Compose::new(test_dir, env_config.clone(), network_name.clone())?;
+
+        // build command args for runner
+        let mut runner_args = Vec::new();
+        runner_args.push("--features".to_string());
+        runner_args.push(config.features.join(","));
+        // If the test field is not present then use the --lib flag
+        match config.test {
+            Some(ref test_arg) => {
+                runner_args.push("--test".to_string());
+                runner_args.push(test_arg.to_string());
+            }
+            None => runner_args.push("--lib".to_string()),
+        }
+
+        // Ensure the test_filter args are passed as well
+        if let Some(ref filter) = config.test_filter {
+            runner_args.push(filter.to_string());
+        }
+        // TODO runner_args.extend(extra_args);
+
+        // Some arguments are not compatible with the --no-capture arg
+        if !runner_args.contains(&"--test-threads".to_string()) {
+            runner_args.push("--no-capture".to_string());
+        }
+
+        let compose = Compose::new(
+            test_dir,
+            env_config.clone(),
+            network_name.clone(),
+            &runner_args,
+            env_config,
+        )?;
         let runner = IntegrationTestRunner::new(
             integration.clone(),
             &config.runner,
@@ -59,43 +101,43 @@ impl IntegrationTest {
             self.start()?;
         }
 
-        let mut env_vars = self.config.env.clone();
-        // Make sure the test runner has the same config environment vars as the services do.
-        for (key, value) in config_env(&self.env_config) {
-            env_vars.insert(key, Some(value));
-        }
+        // let mut env_vars = self.config.env.clone();
+        // // Make sure the test runner has the same config environment vars as the services do.
+        // for (key, value) in config_env(&self.env_config) {
+        //     env_vars.insert(key, Some(value));
+        // }
 
-        env_vars.insert("TEST_LOG".to_string(), Some("info".into()));
-        let mut args = self.config.args.clone().unwrap_or_default();
+        // env_vars.insert("TEST_LOG".to_string(), Some("info".into()));
+        // let mut args = self.config.args.clone().unwrap_or_default();
 
-        args.push("--features".to_string());
-        args.push(self.config.features.join(","));
+        // args.push("--features".to_string());
+        // args.push(self.config.features.join(","));
 
-        // If the test field is not present then use the --lib flag
-        match self.config.test {
-            Some(ref test_arg) => {
-                args.push("--test".to_string());
-                args.push(test_arg.to_string());
-            }
-            None => args.push("--lib".to_string()),
-        }
+        // // If the test field is not present then use the --lib flag
+        // match self.config.test {
+        //     Some(ref test_arg) => {
+        //         args.push("--test".to_string());
+        //         args.push(test_arg.to_string());
+        //     }
+        //     None => args.push("--lib".to_string()),
+        // }
 
-        // Ensure the test_filter args are passed as well
-        if let Some(ref filter) = self.config.test_filter {
-            args.push(filter.to_string());
-        }
-        args.extend(extra_args);
+        // // Ensure the test_filter args are passed as well
+        // if let Some(ref filter) = self.config.test_filter {
+        //     args.push(filter.to_string());
+        // }
+        // args.extend(extra_args);
 
-        // Some arguments are not compatible with the --no-capture arg
-        if !args.contains(&"--test-threads".to_string()) {
-            args.push("--no-capture".to_string());
-        }
+        // // Some arguments are not compatible with the --no-capture arg
+        // if !args.contains(&"--test-threads".to_string()) {
+        //     args.push("--no-capture".to_string());
+        // }
 
-        self.runner
-            .test(&env_vars, &self.config.runner.env, &args)?;
+        // self.runner
+        //     .test(&env_vars, &self.config.runner.env, &args)?;
 
         if !active {
-            self.runner.remove()?;
+            //self.runner.remove()?;
             self.stop()?;
         }
         Ok(())
@@ -104,7 +146,7 @@ impl IntegrationTest {
     pub fn start(&self) -> Result<()> {
         self.config.check_required()?;
         if let Some(compose) = &self.compose {
-            self.runner.ensure_network()?;
+            //self.runner.ensure_network()?;
 
             if self.envs_dir.check_active(&self.environment)? {
                 bail!("environment is already up");
@@ -125,7 +167,7 @@ impl IntegrationTest {
                 bail!("No environment for {} is up.", self.integration);
             }
 
-            self.runner.remove()?;
+            //self.runner.remove()?;
             compose.stop()?;
             self.envs_dir.remove()?;
         }
@@ -145,7 +187,13 @@ struct Compose {
 }
 
 impl Compose {
-    fn new(test_dir: PathBuf, env: Environment, network: String) -> Result<Option<Self>> {
+    fn new(
+        test_dir: PathBuf,
+        env: Environment,
+        network: String,
+        command_args: &Vec<String>,
+        env_config: Environment,
+    ) -> Result<Option<Self>> {
         let original_path: PathBuf = [&test_dir, Path::new("compose.yaml")].iter().collect();
 
         match original_path.try_exists() {
@@ -158,6 +206,9 @@ impl Compose {
                     "default".to_string(),
                     BTreeMap::from_iter([("name".to_string(), network.clone())]),
                 );
+
+                // Inject the test runner as one the services
+                inject_runner(&mut config, &command_args, &env);
 
                 // Create a named tempfile, there may be resource leakage here in case of SIGINT
                 // Tried tempfile::tempfile() but this returns a File object without a usable path
@@ -238,6 +289,71 @@ impl Compose {
         unix::prepare_compose_volumes(&self.config, &self.test_dir)?;
         Ok(())
     }
+}
+
+fn inject_runner(
+    config: &mut ComposeConfig,
+    command_args: &[&str],
+    env: &Environment,
+) -> Result<(), String> {
+    let mut command = vec!["cargo"];
+
+    command.extend_from_slice(TEST_COMMAND);
+    command.extend_from_slice(command_args);
+
+    let command: Vec<String> = command.iter().map(|s: &str| s.into().collect());
+
+    let volumes = Some(vec![
+        format!("{}:/code", app::path()),
+        "target:/code/target".to_owned(),
+        "cargogit:/usr/local/cargo/git".to_owned(),
+        "cargoregistry:/usr/local/cargo/registry".to_owned(),
+    ]);
+
+    let mut environment = vec![];
+    for (key, value) in env {
+        if let Some(value) = value {
+            environment.push(format!("{}={}", key, value))
+        }
+    }
+    let environment = if environment.is_empty() {
+        None
+    } else {
+        Some(environment)
+    };
+
+    let mut depends_on = vec![];
+    for service in config.services {
+        if let Some(deps) = &service.1.depends_on {
+            if !deps.contains(&RUNNER.to_owned()) {
+                depends_on.push(service.0);
+            }
+        }
+    }
+    let depends_on = if depends_on.is_empty() {
+        None
+    } else {
+        Some(depends_on)
+    };
+
+    let runner_svc = ComposeService {
+        image: None,
+        hostname: Some(RUNNER.to_owned()),
+        container_name: None,
+        // TODO: need to decide if use the Value from serde or change that
+        build: todo!(),
+        working_dir: Some("/code".to_owned()),
+        command,
+        ports: None,
+        env_file: None,
+        volumes,
+        environment,
+        healthcheck: None,
+    };
+
+    config.services.insert(RUNNER.to_owned(), runner_svc);
+
+    Ok(())
 }
 
 fn config_env(config: &Environment) -> impl Iterator<Item = (String, String)> + '_ {

@@ -57,6 +57,8 @@ pub struct ComposeService {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub build: Option<Value>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub working_dir: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub command: Option<Command>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ports: Option<Vec<String>>,
