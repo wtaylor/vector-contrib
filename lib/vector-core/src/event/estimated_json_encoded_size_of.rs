@@ -4,18 +4,19 @@ use bytes::Bytes;
 use chrono::{DateTime, Timelike, Utc};
 use ordered_float::NotNan;
 use smallvec::SmallVec;
+use vector_common::json_size::JsonSize;
 use vrl::value::Value;
 
-const NULL_SIZE: usize = 4;
-const TRUE_SIZE: usize = 4;
-const FALSE_SIZE: usize = 5;
+const NULL_SIZE: JsonSize = JsonSize::new(4);
+const TRUE_SIZE: JsonSize = JsonSize::new(4);
+const FALSE_SIZE: JsonSize = JsonSize::new(5);
 
-const BRACKETS_SIZE: usize = 2;
-const BRACES_SIZE: usize = 2;
+const BRACKETS_SIZE: JsonSize = JsonSize::new(2);
+const BRACES_SIZE: JsonSize = JsonSize::new(2);
 
-const QUOTES_SIZE: usize = 2;
-const COMMA_SIZE: usize = 1;
-const COLON_SIZE: usize = 1;
+const QUOTES_SIZE: JsonSize = JsonSize::new(2);
+const COMMA_SIZE: JsonSize = JsonSize::new(1);
+const COLON_SIZE: JsonSize = JsonSize::new(1);
 
 const EPOCH_RFC3339_0: &str = "1970-01-01T00:00:00Z";
 const EPOCH_RFC3339_3: &str = "1970-01-01T00:00:00.000Z";
@@ -40,17 +41,17 @@ const EPOCH_RFC3339_9: &str = "1970-01-01T00:00:00.000000000Z";
 ///
 /// Ideally, no allocations should take place in any implementation of this function.
 pub trait EstimatedJsonEncodedSizeOf {
-    fn estimated_json_encoded_size_of(&self) -> usize;
+    fn estimated_json_encoded_size_of(&self) -> JsonSize;
 }
 
 impl<T: EstimatedJsonEncodedSizeOf> EstimatedJsonEncodedSizeOf for &T {
-    fn estimated_json_encoded_size_of(&self) -> usize {
+    fn estimated_json_encoded_size_of(&self) -> JsonSize {
         T::estimated_json_encoded_size_of(self)
     }
 }
 
 impl<T: EstimatedJsonEncodedSizeOf> EstimatedJsonEncodedSizeOf for Option<T> {
-    fn estimated_json_encoded_size_of(&self) -> usize {
+    fn estimated_json_encoded_size_of(&self) -> JsonSize {
         match self {
             Some(v) => v.estimated_json_encoded_size_of(),
             None => NULL_SIZE,
@@ -61,13 +62,13 @@ impl<T: EstimatedJsonEncodedSizeOf> EstimatedJsonEncodedSizeOf for Option<T> {
 impl<T: EstimatedJsonEncodedSizeOf, const N: usize> EstimatedJsonEncodedSizeOf
     for SmallVec<[T; N]>
 {
-    fn estimated_json_encoded_size_of(&self) -> usize {
+    fn estimated_json_encoded_size_of(&self) -> JsonSize {
         self.iter().map(T::estimated_json_encoded_size_of).sum()
     }
 }
 
 impl EstimatedJsonEncodedSizeOf for Value {
-    fn estimated_json_encoded_size_of(&self) -> usize {
+    fn estimated_json_encoded_size_of(&self) -> JsonSize {
         match self {
             Value::Timestamp(v) => v.estimated_json_encoded_size_of(),
             Value::Object(v) => v.estimated_json_encoded_size_of(),
@@ -88,25 +89,25 @@ impl EstimatedJsonEncodedSizeOf for Value {
 /// This is the main reason why `EstimatedJsonEncodedSizeOf` is named as is, as most other types can
 /// be calculated exactly without a noticable performance penalty.
 impl EstimatedJsonEncodedSizeOf for str {
-    fn estimated_json_encoded_size_of(&self) -> usize {
-        QUOTES_SIZE + self.len()
+    fn estimated_json_encoded_size_of(&self) -> JsonSize {
+        QUOTES_SIZE + self.len().into()
     }
 }
 
 impl EstimatedJsonEncodedSizeOf for String {
-    fn estimated_json_encoded_size_of(&self) -> usize {
+    fn estimated_json_encoded_size_of(&self) -> JsonSize {
         self.as_str().estimated_json_encoded_size_of()
     }
 }
 
 impl EstimatedJsonEncodedSizeOf for Bytes {
-    fn estimated_json_encoded_size_of(&self) -> usize {
-        QUOTES_SIZE + self.len()
+    fn estimated_json_encoded_size_of(&self) -> JsonSize {
+        QUOTES_SIZE + self.len().into()
     }
 }
 
 impl EstimatedJsonEncodedSizeOf for bool {
-    fn estimated_json_encoded_size_of(&self) -> usize {
+    fn estimated_json_encoded_size_of(&self) -> JsonSize {
         if *self {
             TRUE_SIZE
         } else {
@@ -116,19 +117,19 @@ impl EstimatedJsonEncodedSizeOf for bool {
 }
 
 impl EstimatedJsonEncodedSizeOf for f64 {
-    fn estimated_json_encoded_size_of(&self) -> usize {
-        ryu::Buffer::new().format_finite(*self).len()
+    fn estimated_json_encoded_size_of(&self) -> JsonSize {
+        ryu::Buffer::new().format_finite(*self).len().into()
     }
 }
 
 impl EstimatedJsonEncodedSizeOf for f32 {
-    fn estimated_json_encoded_size_of(&self) -> usize {
-        ryu::Buffer::new().format_finite(*self).len()
+    fn estimated_json_encoded_size_of(&self) -> JsonSize {
+        ryu::Buffer::new().format_finite(*self).len().into()
     }
 }
 
 impl<T: EstimatedJsonEncodedSizeOf + Copy> EstimatedJsonEncodedSizeOf for NotNan<T> {
-    fn estimated_json_encoded_size_of(&self) -> usize {
+    fn estimated_json_encoded_size_of(&self) -> JsonSize {
         self.into_inner().estimated_json_encoded_size_of()
     }
 }
@@ -140,7 +141,7 @@ where
     K: AsRef<str>,
     V: EstimatedJsonEncodedSizeOf,
 {
-    fn estimated_json_encoded_size_of(&self) -> usize {
+    fn estimated_json_encoded_size_of(&self) -> JsonSize {
         let size = self.iter().fold(BRACES_SIZE, |acc, (k, v)| {
             acc + k.as_ref().estimated_json_encoded_size_of()
                 + COLON_SIZE
@@ -164,7 +165,7 @@ where
     V: EstimatedJsonEncodedSizeOf,
     S: ::std::hash::BuildHasher,
 {
-    fn estimated_json_encoded_size_of(&self) -> usize {
+    fn estimated_json_encoded_size_of(&self) -> JsonSize {
         let size = self.iter().fold(BRACES_SIZE, |acc, (k, v)| {
             acc + k.as_ref().estimated_json_encoded_size_of()
                 + COLON_SIZE
@@ -184,7 +185,7 @@ impl<V> EstimatedJsonEncodedSizeOf for Vec<V>
 where
     V: EstimatedJsonEncodedSizeOf,
 {
-    fn estimated_json_encoded_size_of(&self) -> usize {
+    fn estimated_json_encoded_size_of(&self) -> JsonSize {
         let size = self.iter().fold(BRACKETS_SIZE, |acc, v| {
             acc + COMMA_SIZE + v.estimated_json_encoded_size_of()
         });
@@ -205,7 +206,7 @@ impl EstimatedJsonEncodedSizeOf for DateTime<Utc> {
     ///
     /// - `chrono::SecondsFormat::AutoSi` is used to calculate nanoseconds precision.
     /// - `use_z` is `true` for the `chrono::DateTime#to_rfc3339_opts` function call.
-    fn estimated_json_encoded_size_of(&self) -> usize {
+    fn estimated_json_encoded_size_of(&self) -> JsonSize {
         let ns = self.nanosecond() % 1_000_000_000;
         let epoch = if ns == 0 {
             EPOCH_RFC3339_0
@@ -217,25 +218,26 @@ impl EstimatedJsonEncodedSizeOf for DateTime<Utc> {
             EPOCH_RFC3339_9
         };
 
-        QUOTES_SIZE + epoch.len()
+        QUOTES_SIZE + epoch.len().into()
     }
 }
 
 impl EstimatedJsonEncodedSizeOf for u8 {
     #[rustfmt::skip]
-    fn estimated_json_encoded_size_of(&self) -> usize {
+    fn estimated_json_encoded_size_of(&self) -> JsonSize {
         let v = *self;
 
         // 0 ..= 255
         if        v <  10 { 1
         } else if v < 100 { 2
         } else            { 3 }
+        .into()
     }
 }
 
 impl EstimatedJsonEncodedSizeOf for i8 {
     #[rustfmt::skip]
-    fn estimated_json_encoded_size_of(&self) -> usize {
+    fn estimated_json_encoded_size_of(&self) -> JsonSize {
         let v = *self;
 
         // -128 ..= 127
@@ -245,12 +247,13 @@ impl EstimatedJsonEncodedSizeOf for i8 {
         } else if v <  10 { 1
         } else if v < 100 { 2
         } else            { 3 }
+        .into()
     }
 }
 
 impl EstimatedJsonEncodedSizeOf for u16 {
     #[rustfmt::skip]
-    fn estimated_json_encoded_size_of(&self) -> usize {
+    fn estimated_json_encoded_size_of(&self) -> JsonSize {
         let v = *self;
 
         // 0 ..= 65_535
@@ -259,12 +262,13 @@ impl EstimatedJsonEncodedSizeOf for u16 {
         } else if v <  1_000 { 3
         } else if v < 10_000 { 4
         } else               { 5 }
+        .into()
     }
 }
 
 impl EstimatedJsonEncodedSizeOf for i16 {
     #[rustfmt::skip]
-    fn estimated_json_encoded_size_of(&self) -> usize {
+    fn estimated_json_encoded_size_of(&self) -> JsonSize {
         let v = *self;
 
         // -32_768 ..= 32_767
@@ -278,12 +282,13 @@ impl EstimatedJsonEncodedSizeOf for i16 {
         } else if v <  1_000 { 3
         } else if v < 10_000 { 4
         } else               { 5 }
+        .into()
     }
 }
 
 impl EstimatedJsonEncodedSizeOf for u32 {
     #[rustfmt::skip]
-    fn estimated_json_encoded_size_of(&self) -> usize {
+    fn estimated_json_encoded_size_of(&self) -> JsonSize {
         let v = *self;
 
         // 0 ..= 4_294_967_295
@@ -297,12 +302,13 @@ impl EstimatedJsonEncodedSizeOf for u32 {
         } else if v <   100_000_000 { 8
         } else if v < 1_000_000_000 { 9
         } else                      { 10 }
+        .into()
     }
 }
 
 impl EstimatedJsonEncodedSizeOf for i32 {
     #[rustfmt::skip]
-    fn estimated_json_encoded_size_of(&self) -> usize {
+    fn estimated_json_encoded_size_of(&self) -> JsonSize {
         let v = *self;
 
         // -2_147_483_648 ..= 2_147_483_647
@@ -326,12 +332,13 @@ impl EstimatedJsonEncodedSizeOf for i32 {
         } else if v <   100_000_000 {  8
         } else if v < 1_000_000_000 {  9
         } else                      { 10 }
+        .into()
     }
 }
 
 impl EstimatedJsonEncodedSizeOf for u64 {
     #[rustfmt::skip]
-    fn estimated_json_encoded_size_of(&self) -> usize {
+    fn estimated_json_encoded_size_of(&self) -> JsonSize {
         let v = *self;
 
         // 0 ..= 18_446_744_073_709_551_615
@@ -355,12 +362,13 @@ impl EstimatedJsonEncodedSizeOf for u64 {
         } else if v <  1_000_000_000_000_000_000 { 18
         } else if v < 10_000_000_000_000_000_000 { 19
         } else                                   { 20 }
+        .into()
     }
 }
 
 impl EstimatedJsonEncodedSizeOf for i64 {
     #[rustfmt::skip]
-    fn estimated_json_encoded_size_of(&self) -> usize {
+    fn estimated_json_encoded_size_of(&self) -> JsonSize {
         let v = *self;
 
         // -9_223_372_036_854_775_808 ..= 9_223_372_036_854_775_807
@@ -402,17 +410,18 @@ impl EstimatedJsonEncodedSizeOf for i64 {
         } else if v <   100_000_000_000_000_000 { 17
         } else if v < 1_000_000_000_000_000_000 { 18
         } else                                  { 19 }
+        .into()
     }
 }
 
 impl EstimatedJsonEncodedSizeOf for usize {
-    fn estimated_json_encoded_size_of(&self) -> usize {
+    fn estimated_json_encoded_size_of(&self) -> JsonSize {
         (*self as u64).estimated_json_encoded_size_of()
     }
 }
 
 impl EstimatedJsonEncodedSizeOf for isize {
-    fn estimated_json_encoded_size_of(&self) -> usize {
+    fn estimated_json_encoded_size_of(&self) -> JsonSize {
         (*self as i64).estimated_json_encoded_size_of()
     }
 }
@@ -453,7 +462,7 @@ mod tests {
         let got = v.estimated_json_encoded_size_of();
         let want = serde_json::to_string(&v).unwrap();
 
-        got == want.len()
+        got == want.len().into()
     }
 
     #[quickcheck]
@@ -461,7 +470,7 @@ mod tests {
         let got = v.estimated_json_encoded_size_of();
         let want = serde_json::to_string(&v).unwrap();
 
-        got == want.len()
+        got == want.len().into()
     }
 
     #[quickcheck]
@@ -469,7 +478,7 @@ mod tests {
         let got = v.estimated_json_encoded_size_of();
         let want = serde_json::to_string(&v).unwrap();
 
-        got == want.len()
+        got == want.len().into()
     }
 
     #[quickcheck]
@@ -477,7 +486,7 @@ mod tests {
         let got = v.estimated_json_encoded_size_of();
         let want = serde_json::to_string(&v).unwrap();
 
-        got == want.len()
+        got == want.len().into()
     }
 
     #[quickcheck]
@@ -485,7 +494,7 @@ mod tests {
         let got = v.estimated_json_encoded_size_of();
         let want = serde_json::to_string(&v).unwrap();
 
-        got == want.len()
+        got == want.len().into()
     }
 
     #[quickcheck]
@@ -493,7 +502,7 @@ mod tests {
         let got = v.estimated_json_encoded_size_of();
         let want = serde_json::to_string(&v).unwrap();
 
-        got == want.len()
+        got == want.len().into()
     }
 
     #[quickcheck]
@@ -501,7 +510,7 @@ mod tests {
         let got = v.estimated_json_encoded_size_of();
         let want = serde_json::to_string(&v).unwrap();
 
-        got == want.len()
+        got == want.len().into()
     }
 
     #[quickcheck]
@@ -509,7 +518,7 @@ mod tests {
         let got = v.estimated_json_encoded_size_of();
         let want = serde_json::to_string(&v).unwrap();
 
-        got == want.len()
+        got == want.len().into()
     }
 
     #[quickcheck]
@@ -517,7 +526,7 @@ mod tests {
         let got = v.estimated_json_encoded_size_of();
         let want = serde_json::to_string(&v).unwrap();
 
-        got == want.len()
+        got == want.len().into()
     }
 
     #[quickcheck]
@@ -525,7 +534,7 @@ mod tests {
         let got = v.estimated_json_encoded_size_of();
         let want = serde_json::to_string(&v).unwrap();
 
-        got == want.len()
+        got == want.len().into()
     }
 
     #[quickcheck]
@@ -538,7 +547,7 @@ mod tests {
         let got = v.estimated_json_encoded_size_of();
         let want = serde_json::to_string(&v).unwrap();
 
-        got == want.len()
+        got == want.len().into()
     }
 
     #[quickcheck]
@@ -551,7 +560,7 @@ mod tests {
         let got = v.estimated_json_encoded_size_of();
         let want = serde_json::to_string(&v).unwrap();
 
-        got == want.len()
+        got == want.len().into()
     }
 
     #[quickcheck]
@@ -563,7 +572,7 @@ mod tests {
         let got = v.estimated_json_encoded_size_of();
         let want = serde_json::to_string(&v).unwrap();
 
-        TestResult::from_bool(got == want.len())
+        TestResult::from_bool(got == want.len().into())
     }
 
     #[quickcheck]
@@ -575,7 +584,7 @@ mod tests {
         let got = v.estimated_json_encoded_size_of();
         let want = serde_json::to_string(&v).unwrap();
 
-        TestResult::from_bool(got == want.len())
+        TestResult::from_bool(got == want.len().into())
     }
 
     #[quickcheck]
@@ -583,7 +592,7 @@ mod tests {
         let got = v.estimated_json_encoded_size_of();
         let want = serde_json::to_string(&v).unwrap();
 
-        got == want.len()
+        got == want.len().into()
     }
 
     #[quickcheck]
@@ -591,7 +600,7 @@ mod tests {
         let got = v.estimated_json_encoded_size_of();
         let want = serde_json::to_string(&v).unwrap();
 
-        got == want.len()
+        got == want.len().into()
     }
 
     #[quickcheck]
@@ -599,7 +608,7 @@ mod tests {
         let got = v.estimated_json_encoded_size_of();
         let want = serde_json::to_string(&v).unwrap();
 
-        TestResult::from_bool(got == want.len())
+        TestResult::from_bool(got == want.len().into())
     }
 
     #[quickcheck]
@@ -611,7 +620,7 @@ mod tests {
         let got = v.estimated_json_encoded_size_of();
         let want = serde_json::to_string(&v).unwrap();
 
-        TestResult::from_bool(got == want.len())
+        TestResult::from_bool(got == want.len().into())
     }
 
     fn is_inaccurately_counted_value(v: &Value) -> bool {
