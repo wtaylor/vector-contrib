@@ -287,11 +287,10 @@ jobs:
       - uses: colpal/actions-clean@v1
 
       - uses: actions/checkout@v3
-
-      - uses: actions/checkout@v3
         with:
           ref: ${{ needs.compute-metadata.outputs.baseline-sha }}
           path: baseline-vector
+          submodules: "recursive"
 
       - name: Set up Docker Buildx
         id: buildx
@@ -324,11 +323,10 @@ jobs:
       - uses: colpal/actions-clean@v1
 
       - uses: actions/checkout@v3
-
-      - uses: actions/checkout@v3
         with:
           ref: ${{ needs.compute-metadata.outputs.comparison-sha }}
           path: comparison-vector
+          submodules: "recursive"
 
       - name: Set up Docker Buildx
         id: buildx
