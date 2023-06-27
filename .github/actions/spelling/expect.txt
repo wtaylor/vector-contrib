@@ -437,6 +437,7 @@ getmore
 getrandom
 gfm
 gha
+gitmodules
 Gjengset
 gleichner
 glog
@@ -469,7 +470,6 @@ hannes
 Hashbang
 hashbrown
 hashindex
-hashlink
 hashring
 hashset
 hashsum
@@ -585,7 +585,7 @@ kinit
 klog
 Knx
 ktff
-kvlist
+Kvlist
 kvs
 Kxs
 labelmap
@@ -1114,7 +1114,6 @@ Tomola
 tonydanza
 toolbars
 toolchains
-TOOLSDIRECTORY
 toolset
 toor
 topdir
