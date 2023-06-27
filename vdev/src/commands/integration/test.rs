@@ -20,6 +20,14 @@ pub struct Cli {
     /// The desired environment (optional)
     environment: Option<String>,
 
+    /// Whether to compile the test runner with all integration test features
+    #[arg(short = 'a', long)]
+    build_all: bool,
+
+    /// Number of retries to allow on each integration test case.
+    #[arg(short = 'r', long)]
+    retries: u8,
+
     /// Extra test command arguments
     args: Vec<String>,
 }
@@ -30,17 +38,28 @@ impl Cli {
         let envs = config.environments();
 
         let active = EnvsDir::new(&self.integration).active()?;
+
         match (self.environment, active) {
             (Some(environment), Some(active)) if environment != active => {
                 bail!("Requested environment {environment:?} does not match active one {active:?}")
             }
             (Some(environment), _) => {
-                IntegrationTest::new(self.integration, environment)?.test(self.args)
+                IntegrationTest::new(self.integration, environment, self.build_all, self.retries)?
+                    .test(self.args)
             }
-            (None, Some(active)) => IntegrationTest::new(self.integration, active)?.test(self.args),
+            (None, Some(active)) => {
+                IntegrationTest::new(self.integration, active, self.build_all, self.retries)?
+                    .test(self.args)
+            }
             (None, None) => {
                 for env_name in envs.keys() {
-                    IntegrationTest::new(&self.integration, env_name)?.test(self.args.clone())?;
+                    IntegrationTest::new(
+                        &self.integration,
+                        env_name,
+                        self.build_all,
+                        self.retries,
+                    )?
+                    .test(self.args.clone())?;
                 }
                 Ok(())
             }
