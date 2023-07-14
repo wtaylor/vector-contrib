@@ -759,10 +759,8 @@ mod tests {
         );
         let log = event.as_log();
 
-        assert_eq!(
-            log[log_schema().host_key().unwrap().to_string().as_str()],
-            "Some.Machine".into()
-        );
+        let message_key = log_schema().host_key().unwrap().to_string();
+        assert_eq!(log[&message_key], "Some.Machine".into());
         assert_eq!(log[STREAM_KEY], STDOUT.into());
         assert_eq!(log[PID_KEY], (8888_i64).into());
         assert_eq!(log[COMMAND_KEY], config.command.into());
