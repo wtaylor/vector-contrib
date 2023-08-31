@@ -1,0 +1,8 @@
+vector:
+  metrics:
+    enabled: true
+    url: "http://runner:8081"
+  logs:
+    enabled: false
+  traces:
+    enabled: false

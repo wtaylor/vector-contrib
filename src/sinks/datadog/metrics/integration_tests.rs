@@ -299,19 +299,26 @@ struct Payload {
 }
 
 async fn get_fakeintake_payloads(url: &str) -> Payloads {
-    Client::new()
+    let res = Client::new()
         .request(Method::GET, url)
         .send()
         .await
         .unwrap_or_else(|_| panic!("Sending GET request to {} failed", url))
-        .json::<Payloads>()
+        .text()
         .await
-        .expect("Parsing fakeintake payloads failed")
+        .expect("Parsing fakeintake payloads failed");
+
+    println!("body= {:?}", res);
+
+    Payloads { payloads: vec![] }
+    // .json::<Payloads>()
+    // .await
+    // .expect("Parsing fakeintake payloads failed")
 }
 
 async fn get_payloads_agent() -> Payloads {
     let url = format!(
-        "{}/fakeintake/payloads?endpoint=/api/v2/series",
+        "{}/fakeintake/payloads?endpoint=/api/v2/series?format=json",
         fake_intake_agent_endpoint()
     );
     get_fakeintake_payloads(&url).await
@@ -319,7 +326,7 @@ async fn get_payloads_agent() -> Payloads {
 
 async fn get_payloads_vector() -> Payloads {
     let url = format!(
-        "{}/fakeintake/payloads?endpoint=/api/v1/series",
+        "{}/fakeintake/payloads?endpoint=/api/v1/series?format=json",
         fake_intake_vector_endpoint()
     );
     get_fakeintake_payloads(&url).await

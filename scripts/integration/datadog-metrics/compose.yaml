@@ -29,9 +29,9 @@ services:
     - DD_ENABLE_PAYLOADS_SERVICE_CHECKS=false
       #- DD_ENABLE_PAYLOADS_SKETCHES=false
   datadog-agent-vector:
-    # TODO I had to modify the agent container, to add config settings for sending metrics to
-    # vector, and then exported that as an image.
-    image: datadog-agent-vector-t1:latest
+    image: docker.io/datadog/agent:${CONFIG_VERSION}
+    volumes:
+      - ../../../tests/data/datadog-metrics-e2e.yaml:/etc/datadog-agent/conf.d/test.d/conf.yaml
     environment:
     - DD_API_KEY=${TEST_DATADOG_API_KEY:?TEST_DATADOG_API_KEY required}
       #- DD_DD_URL=http://runner:8081
