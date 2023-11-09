@@ -33,7 +33,9 @@ use crate::sinks::{
         config::CloudwatchLogsSinkConfig, request, retry::CloudwatchRetryLogic,
         sink::BatchCloudwatchRequest, CloudwatchKey,
     },
-    util::{retries::FibonacciRetryPolicy, EncodedLength, TowerRequestConfig, TowerRequestSettings},
+    util::{
+        retries::FibonacciRetryPolicy, EncodedLength, TowerRequestConfig, TowerRequestSettings,
+    },
 };
 
 type Svc = Buffer<
